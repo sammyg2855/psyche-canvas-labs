@@ -1,0 +1,116 @@
+import { DashboardLayout } from "@/components/DashboardLayout";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { useNavigate } from "react-router-dom";
+import { MessageSquare, Heart, BookOpen, Target, TrendingUp, Award } from "lucide-react";
+
+const Dashboard = () => {
+  const navigate = useNavigate();
+
+  const features = [
+    {
+      icon: MessageSquare,
+      title: "AI Assistant",
+      description: "Chat with your personal wellness companion",
+      path: "/chat",
+      gradient: "from-purple-500 to-blue-500",
+    },
+    {
+      icon: Heart,
+      title: "Mood Tracker",
+      description: "Track and understand your emotional journey",
+      path: "/mood",
+      gradient: "from-pink-500 to-rose-500",
+    },
+    {
+      icon: BookOpen,
+      title: "Journal",
+      description: "Capture your thoughts and reflections",
+      path: "/journal",
+      gradient: "from-blue-500 to-cyan-500",
+    },
+    {
+      icon: Target,
+      title: "Goals",
+      description: "Set and achieve your wellness objectives",
+      path: "/goals",
+      gradient: "from-green-500 to-teal-500",
+    },
+  ];
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-8 animate-fade-in">
+        {/* Welcome Section */}
+        <div className="hero-gradient rounded-2xl p-8 md:p-12 text-center">
+          <h1 className="text-4xl md:text-5xl font-bold mb-4">
+            Welcome to <span className="gradient-text">MindScape</span>
+          </h1>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            Your personal space for wellness, growth, and self-discovery. Let's make today count.
+          </p>
+        </div>
+
+        {/* Quick Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="card-gradient">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Mood Check-ins</CardTitle>
+              <Heart className="h-4 w-4 text-primary" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">0</div>
+              <p className="text-xs text-muted-foreground">Start tracking today</p>
+            </CardContent>
+          </Card>
+          <Card className="card-gradient">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Journal Entries</CardTitle>
+              <BookOpen className="h-4 w-4 text-primary" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">0</div>
+              <p className="text-xs text-muted-foreground">Begin your journey</p>
+            </CardContent>
+          </Card>
+          <Card className="card-gradient">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Goals Progress</CardTitle>
+              <TrendingUp className="h-4 w-4 text-primary" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">0%</div>
+              <p className="text-xs text-muted-foreground">Set your first goal</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Feature Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {features.map((feature) => (
+            <Card
+              key={feature.path}
+              className="card-gradient hover:scale-105 smooth-transition cursor-pointer group"
+              onClick={() => navigate(feature.path)}
+            >
+              <CardHeader>
+                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${feature.gradient} flex items-center justify-center mb-4 group-hover:glow-effect smooth-transition`}>
+                  <feature.icon className="w-6 h-6 text-white" />
+                </div>
+                <CardTitle>{feature.title}</CardTitle>
+                <CardDescription>{feature.description}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button variant="ghost" className="w-full">
+                  Get Started →
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+};
+
+export default Dashboard;
