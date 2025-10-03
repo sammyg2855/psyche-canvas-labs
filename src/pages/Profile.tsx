@@ -10,25 +10,67 @@ import { toast } from "sonner";
 
 const Profile = () => {
   const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
   const [loading, setLoading] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        setEmail(user.email || "");
-        setName(user.user_metadata?.name || "");
-      }
-    });
+    loadProfile();
   }, []);
 
+  const loadProfile = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    setEmail(user.email || "");
+    setUserId(user.id);
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (profile) {
+      setDisplayName(profile.display_name || "");
+      setAvatarUrl(profile.avatar_url || "");
+    }
+  };
+
   const handleSave = async () => {
+    if (!userId) return;
+    
     setLoading(true);
     try {
-      const { error } = await supabase.auth.updateUser({
-        data: { name },
-      });
-      if (error) throw error;
+      const { data: existingProfile } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (existingProfile) {
+        const { error } = await supabase
+          .from("profiles")
+          .update({
+            display_name: displayName,
+            avatar_url: avatarUrl,
+          })
+          .eq("user_id", userId);
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("profiles")
+          .insert({
+            user_id: userId,
+            display_name: displayName,
+            avatar_url: avatarUrl,
+          });
+
+        if (error) throw error;
+      }
+
       toast.success("Profile updated successfully!");
     } catch (error: any) {
       toast.error(error.message || "Failed to update profile");
@@ -52,12 +94,21 @@ const Profile = () => {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="name">Full Name</Label>
+              <Label htmlFor="displayName">Display Name</Label>
               <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Your name"
+                id="displayName"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="How should we call you?"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="avatarUrl">Avatar URL (Optional)</Label>
+              <Input
+                id="avatarUrl"
+                value={avatarUrl}
+                onChange={(e) => setAvatarUrl(e.target.value)}
+                placeholder="https://example.com/avatar.jpg"
               />
             </div>
             <div className="space-y-2">
@@ -88,7 +139,7 @@ const Profile = () => {
               mood, journal your thoughts, set meaningful goals, and receive AI-powered guidance
               on your journey to better mental health and well-being.
             </p>
-            <p className="text-primary font-medium">Version 1.0.0</p>
+            <p className="text-primary font-medium">Version 2.0.0</p>
           </CardContent>
         </Card>
       </div>

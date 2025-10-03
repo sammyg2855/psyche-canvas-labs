@@ -6,22 +6,23 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Bot, User, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Message {
+  id?: string;
   role: "user" | "assistant";
   content: string;
 }
 
 const Chat = () => {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content: "Hello! I'm your MindScape AI assistant. How can I support your wellness journey today?",
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    loadMessages();
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -29,11 +30,63 @@ const Chat = () => {
     }
   }, [messages]);
 
+  const loadMessages = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from("chat_messages")
+      .select("*")
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      toast.error("Failed to load chat history");
+      return;
+    }
+
+    if (data.length === 0) {
+      const welcomeMsg = {
+        role: "assistant" as const,
+        content: "Hello! I'm your MindScape AI assistant. How can I support your wellness journey today?",
+      };
+      setMessages([welcomeMsg]);
+      await supabase.from("chat_messages").insert({
+        user_id: user.id,
+        role: welcomeMsg.role,
+        content: welcomeMsg.content,
+      });
+    } else {
+      setMessages(data.map(msg => ({
+        id: msg.id,
+        role: msg.role as "user" | "assistant",
+        content: msg.content,
+      })));
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim()) return;
 
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Please log in to chat");
+      return;
+    }
+
     const userMessage: Message = { role: "user", content: input };
-    setMessages((prev) => [...prev, userMessage]);
+    
+    // Save user message to database
+    const { data: savedUserMsg } = await supabase
+      .from("chat_messages")
+      .insert({
+        user_id: user.id,
+        role: userMessage.role,
+        content: userMessage.content,
+      })
+      .select()
+      .single();
+
+    setMessages((prev) => [...prev, { ...userMessage, id: savedUserMsg?.id }]);
     setInput("");
     setLoading(true);
 
@@ -97,6 +150,30 @@ const Chat = () => {
             break;
           }
         }
+      }
+
+      // Save assistant message to database
+      if (assistantContent) {
+        const { data: savedAssistantMsg } = await supabase
+          .from("chat_messages")
+          .insert({
+            user_id: user.id,
+            role: "assistant",
+            content: assistantContent,
+          })
+          .select()
+          .single();
+
+        setMessages((prev) => {
+          const newMessages = [...prev];
+          if (newMessages[newMessages.length - 1]?.role === "assistant") {
+            newMessages[newMessages.length - 1] = { 
+              ...newMessages[newMessages.length - 1], 
+              id: savedAssistantMsg?.id 
+            };
+          }
+          return newMessages;
+        });
       }
 
       setLoading(false);
