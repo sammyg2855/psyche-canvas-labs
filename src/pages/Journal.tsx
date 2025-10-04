@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,14 +19,21 @@ interface JournalEntry {
 }
 
 const Journal = () => {
+  const navigate = useNavigate();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null);
 
   useEffect(() => {
-    loadEntries();
-  }, []);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        navigate("/auth");
+      } else {
+        loadEntries();
+      }
+    });
+  }, [navigate]);
 
   const loadEntries = async () => {
     const { data: { user } } = await supabase.auth.getUser();

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,13 +20,20 @@ interface Goal {
 }
 
 const Goals = () => {
+  const navigate = useNavigate();
   const [goalTitle, setGoalTitle] = useState("");
   const [goalDescription, setGoalDescription] = useState("");
   const [goals, setGoals] = useState<Goal[]>([]);
 
   useEffect(() => {
-    loadGoals();
-  }, []);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        navigate("/auth");
+      } else {
+        loadGoals();
+      }
+    });
+  }, [navigate]);
 
   const loadGoals = async () => {
     const { data: { user } } = await supabase.auth.getUser();

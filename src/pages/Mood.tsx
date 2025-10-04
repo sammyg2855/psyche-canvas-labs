@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,13 +25,20 @@ interface MoodEntry {
 }
 
 const Mood = () => {
+  const navigate = useNavigate();
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [moodHistory, setMoodHistory] = useState<MoodEntry[]>([]);
 
   useEffect(() => {
-    loadMoodHistory();
-  }, []);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        navigate("/auth");
+      } else {
+        loadMoodHistory();
+      }
+    });
+  }, [navigate]);
 
   const loadMoodHistory = async () => {
     const { data: { user } } = await supabase.auth.getUser();
