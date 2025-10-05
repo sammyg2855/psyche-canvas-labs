@@ -12,6 +12,8 @@ import Journal from "./pages/Journal";
 import Goals from "./pages/Goals";
 import Profile from "./pages/Profile";
 import Inspiration from "./pages/Inspiration";
+import Monitor from "./pages/Monitor";
+import Privacy from "./pages/Privacy";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +34,8 @@ const App = () => (
           <Route path="/goals" element={<Goals />} />
           <Route path="/inspiration" element={<Inspiration />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/monitor" element={<Monitor />} />
+          <Route path="/privacy" element={<Privacy />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

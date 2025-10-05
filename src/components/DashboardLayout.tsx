@@ -13,7 +13,9 @@ import {
   Sparkles,
   Menu,
   X,
-  Image
+  Image,
+  Shield,
+  Lock
 } from "lucide-react";
 import { toast } from "sonner";
 import { User as SupabaseUser } from "@supabase/supabase-js";
@@ -60,6 +62,8 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
     { icon: BookOpen, label: "Journal", path: "/journal" },
     { icon: Target, label: "Goals", path: "/goals" },
     { icon: Image, label: "Inspiration", path: "/inspiration" },
+    { icon: Shield, label: "Monitor", path: "/monitor" },
+    { icon: Lock, label: "Privacy", path: "/privacy" },
     { icon: User, label: "Profile", path: "/profile" },
   ];
 
