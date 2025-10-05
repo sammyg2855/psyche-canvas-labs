@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { MessageSquare, Heart, BookOpen, Target, TrendingUp, Award } from "lucide-react";
+import { MessageSquare, Heart, BookOpen, Target, TrendingUp, Award, Shield, Lock, Image } from "lucide-react";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -45,6 +45,27 @@ const Dashboard = () => {
       description: "Set and achieve your wellness objectives",
       path: "/goals",
       gradient: "from-green-500 to-teal-500",
+    },
+    {
+      icon: Image,
+      title: "Inspiration",
+      description: "Create visual boards for motivation",
+      path: "/inspiration",
+      gradient: "from-amber-500 to-orange-500",
+    },
+    {
+      icon: Shield,
+      title: "Monitor",
+      description: "View mental health data of those under your care",
+      path: "/monitor",
+      gradient: "from-indigo-500 to-purple-500",
+    },
+    {
+      icon: Lock,
+      title: "Privacy",
+      description: "Manage who can access your mental health data",
+      path: "/privacy",
+      gradient: "from-red-500 to-pink-500",
     },
   ];
 
