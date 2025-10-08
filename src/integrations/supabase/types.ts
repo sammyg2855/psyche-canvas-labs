@@ -197,7 +197,22 @@ export type Database = {
           monitored_user_id?: string
           relationship_type?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "monitoring_relationships_monitor_id_fkey"
+            columns: ["monitor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "monitoring_relationships_monitored_user_id_fkey"
+            columns: ["monitored_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       moods: {
         Row: {
