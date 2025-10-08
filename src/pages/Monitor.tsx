@@ -3,10 +3,13 @@ import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Shield } from "lucide-react";
+import { Shield, UserPlus, Check, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 interface MonitoredUser {
   id: string;
@@ -19,8 +22,19 @@ interface MentalHealthData {
   goals: any[];
 }
 
+interface PendingRequest {
+  id: string;
+  monitor_id: string;
+  monitored_user_id: string;
+  relationship_type: string;
+  monitor_profile: {
+    display_name: string | null;
+  };
+}
+
 const Monitor = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [monitoredUsers, setMonitoredUsers] = useState<MonitoredUser[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [mentalHealthData, setMentalHealthData] = useState<MentalHealthData>({
@@ -28,6 +42,9 @@ const Monitor = () => {
     journals: [],
     goals: []
   });
+  const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
+  const [newMonitorEmail, setNewMonitorEmail] = useState("");
+  const [relationshipType, setRelationshipType] = useState("parent");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -35,6 +52,7 @@ const Monitor = () => {
         navigate("/auth");
       } else {
         loadMonitoredUsers();
+        loadPendingRequests();
       }
     });
   }, [navigate]);
@@ -82,6 +100,109 @@ const Monitor = () => {
     });
   };
 
+  const loadPendingRequests = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from("monitoring_relationships")
+      .select(`
+        id,
+        monitor_id,
+        monitored_user_id,
+        relationship_type,
+        monitor_profile:profiles!monitoring_relationships_monitor_id_fkey(display_name)
+      `)
+      .eq("monitored_user_id", user.id)
+      .eq("approved", false);
+
+    if (!error && data) {
+      setPendingRequests(data as any);
+    }
+  };
+
+  const handleRequestMonitoring = async () => {
+    if (!newMonitorEmail.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter an email address",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Look up user by email using edge function
+    const { data: lookupData, error: lookupError } = await supabase.functions.invoke('lookup-user-by-email', {
+      body: { email: newMonitorEmail.trim() }
+    });
+
+    if (lookupError || !lookupData?.user_id) {
+      toast({
+        title: "Error",
+        description: "User not found with that email",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { error } = await supabase
+      .from("monitoring_relationships")
+      .insert({
+        monitor_id: user.id,
+        monitored_user_id: lookupData.user_id,
+        relationship_type: relationshipType,
+        approved: false,
+      });
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send monitoring request",
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Success",
+        description: "Monitoring request sent",
+      });
+      setNewMonitorEmail("");
+      loadMonitoredUsers();
+    }
+  };
+
+  const handleApproveRequest = async (requestId: string) => {
+    const { error } = await supabase
+      .from("monitoring_relationships")
+      .update({ approved: true })
+      .eq("id", requestId);
+
+    if (!error) {
+      toast({
+        title: "Success",
+        description: "Monitoring request approved",
+      });
+      loadPendingRequests();
+    }
+  };
+
+  const handleDenyRequest = async (requestId: string) => {
+    const { error } = await supabase
+      .from("monitoring_relationships")
+      .delete()
+      .eq("id", requestId);
+
+    if (!error) {
+      toast({
+        title: "Success",
+        description: "Monitoring request denied",
+      });
+      loadPendingRequests();
+    }
+  };
+
   const handleSelectUser = (userId: string) => {
     setSelectedUserId(userId);
     loadMentalHealthData(userId);
@@ -92,6 +213,87 @@ const Monitor = () => {
   return (
     <DashboardLayout>
       <div className="max-w-6xl mx-auto animate-fade-in space-y-6">
+        {/* Request Monitoring Access */}
+        <Card className="card-gradient">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UserPlus className="w-6 h-6 text-primary" />
+              Request Monitoring Access
+            </CardTitle>
+            <CardDescription>
+              Request permission to monitor someone's mental health data
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col md:flex-row gap-4">
+              <Input
+                placeholder="Enter user's email"
+                value={newMonitorEmail}
+                onChange={(e) => setNewMonitorEmail(e.target.value)}
+                className="flex-1"
+              />
+              <Select value={relationshipType} onValueChange={setRelationshipType}>
+                <SelectTrigger className="w-full md:w-48">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="parent">Parent</SelectItem>
+                  <SelectItem value="guardian">Guardian</SelectItem>
+                  <SelectItem value="police">Police</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button onClick={handleRequestMonitoring}>
+                Send Request
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Pending Requests */}
+        {pendingRequests.length > 0 && (
+          <Card className="card-gradient">
+            <CardHeader>
+              <CardTitle>Pending Access Requests</CardTitle>
+              <CardDescription>
+                Users requesting to monitor your mental health data
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {pendingRequests.map((request) => (
+                <div key={request.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div>
+                    <p className="font-semibold">
+                      {request.monitor_profile?.display_name || "Unknown User"}
+                    </p>
+                    <p className="text-sm text-muted-foreground capitalize">
+                      {request.relationship_type}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => handleApproveRequest(request.id)}
+                      variant="default"
+                    >
+                      <Check className="w-4 h-4 mr-1" />
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleDenyRequest(request.id)}
+                      variant="destructive"
+                    >
+                      <X className="w-4 h-4 mr-1" />
+                      Deny
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Monitored Users */}
         <Card className="card-gradient">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
