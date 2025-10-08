@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,13 +8,50 @@ import { MessageSquare, Heart, BookOpen, Target, TrendingUp, Award, Shield, Lock
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const [stats, setStats] = useState({
+    moodCount: 0,
+    journalCount: 0,
+    goalsProgress: 0,
+  });
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const loadStats = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         navigate("/auth");
+        return;
       }
-    });
+
+      // Fetch mood check-ins count
+      const { count: moodCount } = await supabase
+        .from("moods")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", session.user.id);
+
+      // Fetch journal entries count
+      const { count: journalCount } = await supabase
+        .from("journals")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", session.user.id);
+
+      // Fetch goals and calculate progress
+      const { data: goals } = await supabase
+        .from("goals")
+        .select("progress, completed")
+        .eq("user_id", session.user.id);
+
+      const goalsProgress = goals && goals.length > 0
+        ? Math.round(goals.reduce((acc, goal) => acc + (goal.progress || 0), 0) / goals.length)
+        : 0;
+
+      setStats({
+        moodCount: moodCount || 0,
+        journalCount: journalCount || 0,
+        goalsProgress,
+      });
+    };
+
+    loadStats();
   }, [navigate]);
 
   const features = [
@@ -104,8 +141,10 @@ const Dashboard = () => {
               <Heart className="h-4 w-4 text-primary" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">0</div>
-              <p className="text-xs text-muted-foreground">Start tracking today</p>
+              <div className="text-2xl font-bold">{stats.moodCount}</div>
+              <p className="text-xs text-muted-foreground">
+                {stats.moodCount === 0 ? "Start tracking today" : "Total check-ins"}
+              </p>
             </CardContent>
           </Card>
           <Card className="card-gradient">
@@ -114,8 +153,10 @@ const Dashboard = () => {
               <BookOpen className="h-4 w-4 text-primary" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">0</div>
-              <p className="text-xs text-muted-foreground">Begin your journey</p>
+              <div className="text-2xl font-bold">{stats.journalCount}</div>
+              <p className="text-xs text-muted-foreground">
+                {stats.journalCount === 0 ? "Begin your journey" : "Total entries"}
+              </p>
             </CardContent>
           </Card>
           <Card className="card-gradient">
@@ -124,8 +165,10 @@ const Dashboard = () => {
               <TrendingUp className="h-4 w-4 text-primary" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">0%</div>
-              <p className="text-xs text-muted-foreground">Set your first goal</p>
+              <div className="text-2xl font-bold">{stats.goalsProgress}%</div>
+              <p className="text-xs text-muted-foreground">
+                {stats.goalsProgress === 0 ? "Set your first goal" : "Average progress"}
+              </p>
             </CardContent>
           </Card>
         </div>
