@@ -45,17 +45,66 @@ const Monitor = () => {
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
   const [newMonitorEmail, setNewMonitorEmail] = useState("");
   const [relationshipType, setRelationshipType] = useState("parent");
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [isLoadingRole, setIsLoadingRole] = useState(true);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) {
         navigate("/auth");
       } else {
+        checkUserRole();
         loadMonitoredUsers();
         loadPendingRequests();
       }
     });
   }, [navigate]);
+
+  const checkUserRole = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id)
+      .in("role", ["parent", "guardian", "police"])
+      .maybeSingle();
+
+    setUserRole(data?.role || null);
+    setIsLoadingRole(false);
+  };
+
+  const handleSetRole = async (role: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Delete existing monitoring role if any
+    await supabase
+      .from("user_roles")
+      .delete()
+      .eq("user_id", user.id)
+      .in("role", ["parent", "guardian", "police"]);
+
+    // Insert new role
+    const { error } = await supabase
+      .from("user_roles")
+      .insert({ user_id: user.id, role: role as 'parent' | 'guardian' | 'police' });
+
+    if (!error) {
+      setUserRole(role);
+      toast({
+        title: "Success",
+        description: `Role set to ${role}`,
+      });
+    } else {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
 
   const loadMonitoredUsers = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -210,11 +259,65 @@ const Monitor = () => {
 
   const selectedUser = monitoredUsers.find(u => u.id === selectedUserId);
 
+  if (isLoadingRole) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-96">
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout>
       <div className="max-w-6xl mx-auto animate-fade-in space-y-6">
+        {/* Role Selection */}
+        {!userRole && (
+          <Card className="card-gradient border-primary">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Shield className="w-6 h-6 text-primary" />
+                Select Your Monitoring Role
+              </CardTitle>
+              <CardDescription>
+                To use the monitoring features, please select your role
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Button
+                  onClick={() => handleSetRole("parent")}
+                  variant="outline"
+                  className="h-24 flex flex-col gap-2"
+                >
+                  <span className="text-lg font-semibold">Parent</span>
+                  <span className="text-xs text-muted-foreground">Monitor your children</span>
+                </Button>
+                <Button
+                  onClick={() => handleSetRole("guardian")}
+                  variant="outline"
+                  className="h-24 flex flex-col gap-2"
+                >
+                  <span className="text-lg font-semibold">Guardian</span>
+                  <span className="text-xs text-muted-foreground">Monitor people under your care</span>
+                </Button>
+                <Button
+                  onClick={() => handleSetRole("police")}
+                  variant="outline"
+                  className="h-24 flex flex-col gap-2"
+                >
+                  <span className="text-lg font-semibold">Police</span>
+                  <span className="text-xs text-muted-foreground">Official monitoring</span>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Request Monitoring Access */}
-        <Card className="card-gradient">
+        {userRole && (
+          <Card className="card-gradient">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <UserPlus className="w-6 h-6 text-primary" />
@@ -248,9 +351,10 @@ const Monitor = () => {
             </div>
           </CardContent>
         </Card>
+        )}
 
         {/* Pending Requests */}
-        {pendingRequests.length > 0 && (
+        {userRole && pendingRequests.length > 0 && (
           <Card className="card-gradient">
             <CardHeader>
               <CardTitle>Pending Access Requests</CardTitle>
@@ -294,7 +398,8 @@ const Monitor = () => {
         )}
 
         {/* Monitored Users */}
-        <Card className="card-gradient">
+        {userRole && (
+          <Card className="card-gradient">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Shield className="w-6 h-6 text-primary" />
@@ -325,8 +430,9 @@ const Monitor = () => {
             </div>
           </CardContent>
         </Card>
+        )}
 
-        {selectedUser && (
+        {userRole && selectedUser && (
           <Card className="card-gradient">
             <CardHeader>
               <CardTitle>Mental Health Overview: {selectedUser.display_name || "User"}</CardTitle>
@@ -395,6 +501,12 @@ const Monitor = () => {
               </Tabs>
             </CardContent>
           </Card>
+        )}
+
+        {userRole && (
+          <div className="text-sm text-muted-foreground text-center">
+            Current role: <span className="font-semibold capitalize">{userRole}</span>
+          </div>
         )}
       </div>
     </DashboardLayout>
