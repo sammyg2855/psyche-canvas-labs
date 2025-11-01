@@ -5,11 +5,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Shield, UserPlus, Check, X } from "lucide-react";
+import { Shield, UserPlus, Check, X, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { Badge } from "@/components/ui/badge";
 
 interface MonitoredUser {
   id: string;
@@ -18,8 +19,12 @@ interface MonitoredUser {
 
 interface MentalHealthData {
   moods: any[];
-  journals: any[];
-  goals: any[];
+  alerts: any[];
+}
+
+interface MoodChartData {
+  date: string;
+  score: number;
 }
 
 interface PendingRequest {
@@ -39,9 +44,9 @@ const Monitor = () => {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [mentalHealthData, setMentalHealthData] = useState<MentalHealthData>({
     moods: [],
-    journals: [],
-    goals: []
+    alerts: []
   });
+  const [moodChartData, setMoodChartData] = useState<MoodChartData[]>([]);
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
   const [newMonitorEmail, setNewMonitorEmail] = useState("");
   const [relationshipType, setRelationshipType] = useState("parent");
@@ -136,17 +141,52 @@ const Monitor = () => {
   };
 
   const loadMentalHealthData = async (userId: string) => {
-    const [moodsRes, journalsRes, goalsRes] = await Promise.all([
-      supabase.from("moods").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(10),
-      supabase.from("journals").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(5),
-      supabase.from("goals").select("*").eq("user_id", userId).order("created_at", { ascending: false })
+    const [moodsRes, alertsRes] = await Promise.all([
+      supabase.from("moods").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(30),
+      supabase.from("alerts").select("*").eq("user_id", userId).eq("resolved", false).order("created_at", { ascending: false })
     ]);
 
-    setMentalHealthData({
-      moods: moodsRes.data || [],
-      journals: journalsRes.data || [],
-      goals: goalsRes.data || []
-    });
+    const moods = moodsRes.data || [];
+    const alerts = alertsRes.data || [];
+
+    // Convert moods to chart data
+    const moodScoreMap: { [key: string]: number } = {
+      'happy': 5,
+      'good': 4,
+      'okay': 3,
+      'sad': 2,
+      'anxious': 1,
+      'angry': 1,
+      'depressed': 1
+    };
+
+    const chartData = moods.map(mood => ({
+      date: format(new Date(mood.created_at), "MMM d"),
+      score: moodScoreMap[mood.mood.toLowerCase()] || 3
+    })).reverse();
+
+    setMentalHealthData({ moods, alerts });
+    setMoodChartData(chartData);
+  };
+
+  const handleResolveAlert = async (alertId: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase
+      .from("alerts")
+      .update({ resolved: true, resolved_by: user.id, resolved_at: new Date().toISOString() })
+      .eq("id", alertId);
+
+    if (!error) {
+      toast({
+        title: "Success",
+        description: "Alert marked as resolved",
+      });
+      if (selectedUserId) {
+        loadMentalHealthData(selectedUserId);
+      }
+    }
   };
 
   const loadPendingRequests = async () => {
@@ -432,73 +472,89 @@ const Monitor = () => {
         </Card>
         )}
 
+        {/* Critical Alerts */}
+        {userRole && selectedUser && mentalHealthData.alerts.length > 0 && (
+          <Card className="card-gradient border-destructive">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-destructive">
+                <AlertTriangle className="w-6 h-6" />
+                Critical Alerts: {selectedUser.display_name || "User"}
+              </CardTitle>
+              <CardDescription>
+                Suspicious content detected requiring immediate attention
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {mentalHealthData.alerts.map((alert) => (
+                <div key={alert.id} className="border border-destructive rounded-lg p-4 bg-destructive/10">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant="destructive">
+                          {alert.content_type}
+                        </Badge>
+                        <span className="text-sm text-muted-foreground">
+                          {format(new Date(alert.created_at), "MMM d, yyyy h:mm a")}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        {alert.flagged_words.map((word: string, idx: number) => (
+                          <Badge key={idx} variant="outline" className="text-destructive border-destructive">
+                            {word}
+                          </Badge>
+                        ))}
+                      </div>
+                      <p className="text-sm mt-2 font-medium">"{alert.content_snippet}"</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => handleResolveAlert(alert.id)}
+                      variant="outline"
+                    >
+                      <Check className="w-4 h-4 mr-1" />
+                      Resolve
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Mood Graph */}
         {userRole && selectedUser && (
           <Card className="card-gradient">
             <CardHeader>
-              <CardTitle>Mental Health Overview: {selectedUser.display_name || "User"}</CardTitle>
+              <CardTitle>Mood Trends: {selectedUser.display_name || "User"}</CardTitle>
+              <CardDescription>
+                Mood tracking over the last 30 entries
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <Tabs defaultValue="moods">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="moods">Moods ({mentalHealthData.moods.length})</TabsTrigger>
-                  <TabsTrigger value="journals">Journals ({mentalHealthData.journals.length})</TabsTrigger>
-                  <TabsTrigger value="goals">Goals ({mentalHealthData.goals.length})</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="moods" className="space-y-4">
-                  {mentalHealthData.moods.length === 0 ? (
-                    <p className="text-muted-foreground text-center py-8">No mood entries</p>
-                  ) : (
-                    mentalHealthData.moods.map((mood) => (
-                      <div key={mood.id} className="border rounded-lg p-4">
-                        <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-semibold capitalize">{mood.mood}</h4>
-                          <span className="text-sm text-muted-foreground">
-                            {format(new Date(mood.created_at), "MMM d, yyyy h:mm a")}
-                          </span>
-                        </div>
-                        {mood.note && <p className="text-sm">{mood.note}</p>}
-                      </div>
-                    ))
-                  )}
-                </TabsContent>
-
-                <TabsContent value="journals" className="space-y-4">
-                  {mentalHealthData.journals.length === 0 ? (
-                    <p className="text-muted-foreground text-center py-8">No journal entries</p>
-                  ) : (
-                    mentalHealthData.journals.map((journal) => (
-                      <div key={journal.id} className="border rounded-lg p-4">
-                        <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-semibold">{journal.title}</h4>
-                          <span className="text-sm text-muted-foreground">
-                            {format(new Date(journal.created_at), "MMM d, yyyy")}
-                          </span>
-                        </div>
-                        <p className="text-sm line-clamp-3">{journal.content}</p>
-                      </div>
-                    ))
-                  )}
-                </TabsContent>
-
-                <TabsContent value="goals" className="space-y-4">
-                  {mentalHealthData.goals.length === 0 ? (
-                    <p className="text-muted-foreground text-center py-8">No goals set</p>
-                  ) : (
-                    mentalHealthData.goals.map((goal) => (
-                      <div key={goal.id} className="border rounded-lg p-4">
-                        <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-semibold">{goal.title}</h4>
-                          <span className={`text-sm ${goal.completed ? 'text-green-600' : 'text-muted-foreground'}`}>
-                            {goal.completed ? 'Completed' : `${goal.progress}%`}
-                          </span>
-                        </div>
-                        {goal.description && <p className="text-sm">{goal.description}</p>}
-                      </div>
-                    ))
-                  )}
-                </TabsContent>
-              </Tabs>
+              {moodChartData.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">No mood data available</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={moodChartData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" />
+                    <YAxis domain={[0, 5]} ticks={[1, 2, 3, 4, 5]} />
+                    <Tooltip 
+                      formatter={(value: number) => {
+                        const moodLabels = ['', 'Low', 'Sad', 'Okay', 'Good', 'Happy'];
+                        return moodLabels[value];
+                      }}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="score" 
+                      stroke="hsl(var(--primary))" 
+                      strokeWidth={2}
+                      dot={{ fill: 'hsl(var(--primary))' }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
             </CardContent>
           </Card>
         )}

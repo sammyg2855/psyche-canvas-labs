@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      alerts: {
+        Row: {
+          content_id: string
+          content_snippet: string
+          content_type: string
+          created_at: string
+          flagged_words: string[]
+          id: string
+          resolved: boolean | null
+          resolved_at: string | null
+          resolved_by: string | null
+          user_id: string
+        }
+        Insert: {
+          content_id: string
+          content_snippet: string
+          content_type: string
+          created_at?: string
+          flagged_words: string[]
+          id?: string
+          resolved?: boolean | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          user_id: string
+        }
+        Update: {
+          content_id?: string
+          content_snippet?: string
+          content_type?: string
+          created_at?: string
+          flagged_words?: string[]
+          id?: string
+          resolved?: boolean | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       chat_messages: {
         Row: {
           content: string
