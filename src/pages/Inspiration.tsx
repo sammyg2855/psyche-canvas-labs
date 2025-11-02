@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Heart, Image as ImageIcon, Plus, Search } from "lucide-react";
+import { Heart, Image as ImageIcon, Plus, Search, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -24,6 +24,8 @@ const Inspiration = () => {
   const [newImageUrl, setNewImageUrl] = useState("");
   const [newTitle, setNewTitle] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -49,35 +51,97 @@ const Inspiration = () => {
     }
   };
 
-  const handleAddItem = async () => {
-    if (!newImageUrl.trim()) {
-      toast.error("Please enter an image URL");
-      return;
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        toast.error("Please select an image file");
+        return;
+      }
+      setUploadingFile(file);
     }
+  };
 
+  const handleAddItem = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       toast.error("Please log in to add inspiration");
       return;
     }
 
-    const { error } = await supabase.from("inspiration_items").insert({
-      user_id: user.id,
-      image_url: newImageUrl,
-      title: newTitle || null,
-      board_id: null,
-    });
+    setIsUploading(true);
+    let imageUrl = newImageUrl;
 
-    if (error) {
+    try {
+      // Upload file if selected
+      if (uploadingFile) {
+        const fileExt = uploadingFile.name.split('.').pop();
+        const fileName = `${user.id}/${Math.random()}.${fileExt}`;
+        
+        const { error: uploadError, data } = await supabase.storage
+          .from('inspiration-images')
+          .upload(fileName, uploadingFile);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('inspiration-images')
+          .getPublicUrl(fileName);
+
+        imageUrl = publicUrl;
+      }
+
+      if (!imageUrl.trim()) {
+        toast.error("Please upload an image or enter an image URL");
+        setIsUploading(false);
+        return;
+      }
+
+      const { error } = await supabase.from("inspiration_items").insert({
+        user_id: user.id,
+        image_url: imageUrl,
+        title: newTitle || null,
+        board_id: null,
+      });
+
+      if (error) throw error;
+
+      toast.success("Inspiration added!");
+      setNewImageUrl("");
+      setNewTitle("");
+      setUploadingFile(null);
+      setDialogOpen(false);
+      loadItems();
+    } catch (error) {
       toast.error("Failed to add item");
-      return;
+      console.error(error);
+    } finally {
+      setIsUploading(false);
     }
+  };
 
-    toast.success("Inspiration added!");
-    setNewImageUrl("");
-    setNewTitle("");
-    setDialogOpen(false);
-    loadItems();
+  const handleDeleteItem = async (id: string, imageUrl: string) => {
+    try {
+      // Delete from database
+      const { error: dbError } = await supabase
+        .from("inspiration_items")
+        .delete()
+        .eq("id", id);
+
+      if (dbError) throw dbError;
+
+      // Delete from storage if it's a storage URL
+      if (imageUrl.includes('inspiration-images')) {
+        const path = imageUrl.split('inspiration-images/')[1];
+        await supabase.storage.from('inspiration-images').remove([path]);
+      }
+
+      setItems(items.filter(item => item.id !== id));
+      toast.success("Image deleted");
+    } catch (error) {
+      toast.error("Failed to delete item");
+      console.error(error);
+    }
   };
 
   const toggleFavorite = async (id: string, currentState: boolean) => {
@@ -133,10 +197,36 @@ const Inspiration = () => {
                   <DialogHeader>
                     <DialogTitle>Add Inspiration</DialogTitle>
                     <DialogDescription>
-                      Add an image URL to your inspiration board
+                      Upload an image or add an image URL
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Upload Image</label>
+                      <div className="border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary transition-colors">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFileSelect}
+                          className="hidden"
+                          id="file-upload"
+                        />
+                        <label htmlFor="file-upload" className="cursor-pointer">
+                          <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                          <p className="text-sm text-muted-foreground">
+                            {uploadingFile ? uploadingFile.name : "Click to upload or drag and drop"}
+                          </p>
+                        </label>
+                      </div>
+                    </div>
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-background px-2 text-muted-foreground">Or</span>
+                      </div>
+                    </div>
                     <div>
                       <label className="text-sm font-medium">Image URL</label>
                       <Input
@@ -153,8 +243,12 @@ const Inspiration = () => {
                         onChange={(e) => setNewTitle(e.target.value)}
                       />
                     </div>
-                    <Button onClick={handleAddItem} className="w-full">
-                      Add to Board
+                    <Button 
+                      onClick={handleAddItem} 
+                      className="w-full"
+                      disabled={isUploading}
+                    >
+                      {isUploading ? "Uploading..." : "Add to Board"}
                     </Button>
                   </div>
                 </DialogContent>
@@ -174,7 +268,7 @@ const Inspiration = () => {
                 filteredItems.map((item) => (
                   <div
                     key={item.id}
-                    className="group relative aspect-square rounded-lg overflow-hidden bg-muted hover-scale"
+                    className="group relative aspect-square rounded-lg overflow-hidden bg-card shadow-md hover:shadow-xl smooth-transition"
                   >
                     <img
                       src={item.image_url}
@@ -184,24 +278,32 @@ const Inspiration = () => {
                         e.currentTarget.src = "/placeholder.svg";
                       }}
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                      <div className="absolute bottom-0 left-0 right-0 p-3">
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <div className="absolute bottom-0 left-0 right-0 p-4">
                         {item.title && (
-                          <p className="text-white text-sm font-medium truncate">
+                          <p className="text-white text-sm font-medium truncate mb-2">
                             {item.title}
                           </p>
                         )}
                       </div>
-                      <button
-                        onClick={() => toggleFavorite(item.id, item.is_favorite)}
-                        className="absolute top-2 right-2 p-2 rounded-full bg-white/20 backdrop-blur-sm hover:bg-white/30 transition-colors"
-                      >
-                        <Heart
-                          className={`w-4 h-4 ${
-                            item.is_favorite ? "fill-red-500 text-red-500" : "text-white"
-                          }`}
-                        />
-                      </button>
+                      <div className="absolute top-2 right-2 flex gap-2">
+                        <button
+                          onClick={() => toggleFavorite(item.id, item.is_favorite)}
+                          className="p-2 rounded-full bg-white/20 backdrop-blur-sm hover:bg-white/30 transition-colors"
+                        >
+                          <Heart
+                            className={`w-4 h-4 ${
+                              item.is_favorite ? "fill-red-500 text-red-500" : "text-white"
+                            }`}
+                          />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteItem(item.id, item.image_url)}
+                          className="p-2 rounded-full bg-white/20 backdrop-blur-sm hover:bg-red-500/80 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4 text-white" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))

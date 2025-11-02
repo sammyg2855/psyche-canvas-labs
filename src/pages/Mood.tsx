@@ -40,13 +40,38 @@ const Mood = () => {
     });
   }, [navigate]);
 
+  useEffect(() => {
+    // Set up realtime subscription
+    const channel = supabase
+      .channel('mood-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'moods'
+        },
+        (payload) => {
+          console.log('Mood change detected:', payload);
+          loadMoodHistory();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   const loadMoodHistory = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    // Only load moods for the current user
     const { data, error } = await supabase
       .from("moods")
       .select("*")
+      .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(10);
 
